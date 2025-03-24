@@ -124,10 +124,14 @@ class MultifactorParallelSampling(StatelessMethod):
         if self.features.renormilize_probs:
             if self.estimated_sampling_rate_mapping[peer_ip_src] == 1:
                 return 240
+            if self.estimated_sampling_rate_mapping[peer_ip_src] == 16:
+                return 100
             if self.estimated_sampling_rate_mapping[peer_ip_src] == 128:
                 return 30
             if self.estimated_sampling_rate_mapping[peer_ip_src] == 256:
                 return 8
+            if self.estimated_sampling_rate_mapping[peer_ip_src] == 1000:
+                return 1.9
             if self.estimated_sampling_rate_mapping[peer_ip_src] == 1024:
                 return 1.8
         return 1
