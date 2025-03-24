@@ -68,6 +68,8 @@ class Method(ABC):
                             msg.value(),
                             SerializationContext(msg.topic(), MessageField.VALUE),
                         )
+                        if deserialized_message["packets"] is None: # natting event
+                            continue
                         to_return.append(deserialized_message)
                     except Exception as e:
                         self.logger.exception(f"Error deserializing message: {e}. \nMessage: {msg.value()}")
