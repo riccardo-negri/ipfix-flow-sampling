@@ -69,7 +69,9 @@ class Method(ABC):
                             SerializationContext(msg.topic(), MessageField.VALUE),
                         )
                         to_return.append(deserialized_message)
-
+                    except Exception as e:
+                        self.logger.exception(f"Error deserializing message: {e}. \nMessage: {msg.value()}")
+                    try:
                         # update the estimated sampling rate
                         curr_router = deserialized_message["peer_ip_src"]
                         if curr_router not in self.estimated_sampling_rate_mapping:
@@ -79,8 +81,8 @@ class Method(ABC):
                                 self.estimated_sampling_rate_mapping[curr_router],
                                 deserialized_message["packets"],
                             )
-                    except Exception as e:
-                        self.logger.error(f"Error deserializing message: {e}. \nMessage: {msg.value()}")
+                    except Exception:
+                        self.logger.exception(f"Error estimating sampling rate \nMessage: {deserialized_message}")
             return to_return
 
     def _produce(self, message: dict[str, Any]) -> None:
