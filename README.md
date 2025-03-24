@@ -12,7 +12,6 @@ pip install -r requirements.txt
 Create a `.env` file in the root directory of your project and add the necessary environment variables:
 ```
 SCHEMA_REGISTRY_URL=
-AVRO_OUTPUT_SCHEMA_SUBJECT=
 
 CONSUMER_BOOTSTRAP_SERVERS=
 CONSUMER_SECURITY_PROTOCOL=

@@ -3,6 +3,7 @@ from __future__ import annotations  # noqa: D100
 import os
 import random
 import time
+import json
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -86,11 +87,7 @@ class Method(ABC):
         """Produce a message to the output topic using Avro serialization."""
         try:
             message["writer_id"] = self.writer_id
-            serialized_message = self.avro_serializer(
-                message,
-                SerializationContext(self.input_topic, MessageField.VALUE),
-            )
-            self._produce_with_retry(serialized_message)
+            self._produce_with_retry(json.dumps(message).encode())
             self.local_sampled_counter += 1
             if self.local_sampled_counter % 1000 == 0:
                 with self.shared_sampled_counter.get_lock():
@@ -118,11 +115,6 @@ class Method(ABC):
         self.logger.error("Failed to produce message after multiple retries")
         return False
 
-    def _get_schema_from_schema_registry(
-        self, schema_registry_url, schema_registry_subject
-    ):
-        sr = SchemaRegistryClient({"url": schema_registry_url})
-        return sr.get_latest_version(schema_registry_subject)
 
     def start(self, tot_counter: int, sampled_counter: int) -> None:
         """Start the method in a new thread and return the thread object."""
@@ -130,21 +122,7 @@ class Method(ABC):
             "url": os.getenv("SCHEMA_REGISTRY_URL"),
         }
         schema_registry_client = SchemaRegistryClient(schema_registry_conf)
-
         self.avro_deserializer = AvroDeserializer(schema_registry_client)
-        self.output_schema_subject = os.getenv("AVRO_OUTPUT_SCHEMA_SUBJECT")
-        latest_version = self._get_schema_from_schema_registry(
-            os.getenv("SCHEMA_REGISTRY_URL"),
-            os.getenv("AVRO_OUTPUT_SCHEMA_SUBJECT"),
-        )
-        self.avro_serializer = AvroSerializer(
-            schema_registry_client,
-            schema_str=latest_version.schema,
-            conf={
-                "auto.register.schemas": False,
-                "subject.name.strategy": (topic_record_subject_name_strategy),
-            },
-        )
 
         consumer_config = {
             "bootstrap.servers": os.getenv("CONSUMER_BOOTSTRAP_SERVERS"),
