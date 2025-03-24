@@ -80,7 +80,7 @@ class Method(ABC):
                                 deserialized_message["packets"],
                             )
                     except Exception as e:
-                        self.logger.error(f"Error deserializing message: {e}")
+                        self.logger.error(f"Error deserializing message: {e}. \nMessage: {msg.value()}")
             return to_return
 
     def _produce(self, message: dict[str, Any]) -> None:
