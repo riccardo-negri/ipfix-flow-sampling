@@ -3,7 +3,7 @@
 ## Installation
 To create a Python virtual environment and install the required packages, run the following commands:
 ```bash
-python3 -m venv venv
+python3.11 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
@@ -39,5 +39,5 @@ OUTPUT_TOPIC=
 To run the application, use the following command inside the virtual environment:
 
 ```bash
-python3 main.py
+python3.11 main.py
 ```
