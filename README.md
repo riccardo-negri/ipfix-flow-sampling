@@ -12,6 +12,8 @@ pip install -r requirements.txt
 Create a `.env` file in the root directory of your project and add the necessary environment variables:
 ```
 SCHEMA_REGISTRY_URL=
+SERIALIZE_WITH_AVRO=
+AVRO_OUTPUT_SCHEMA_SUBJECT= # required if above is True
 
 CONSUMER_BOOTSTRAP_SERVERS=
 CONSUMER_SECURITY_PROTOCOL=

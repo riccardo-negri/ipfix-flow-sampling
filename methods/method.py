@@ -1,14 +1,15 @@
 from __future__ import annotations  # noqa: D100
 
+import json
 import os
 import random
 import time
-import json
 from abc import ABC, abstractmethod
 from typing import Any
 
 from confluent_kafka import Consumer, KafkaError, KafkaException, Producer
 from confluent_kafka.schema_registry import (
+    RegisteredSchema,
     SchemaRegistryClient,
     topic_record_subject_name_strategy,
 )
@@ -18,6 +19,7 @@ from confluent_kafka.serialization import MessageField, SerializationContext
 from logger import logger
 
 HIGHEST_SAMPLING_RATE = 2**32
+
 
 class Method(ABC):
     """A base class for flow sampling methods that consumes from a queue and produces to a Kafka topic."""
@@ -34,6 +36,7 @@ class Method(ABC):
         self.local_tot_counter = 0
         self.local_sampled_counter = 0
         self.estimated_sampling_rate_mapping = {}
+        self.serialize_with_avro = False
 
     @abstractmethod
     def _consume_and_produce(self) -> None:
@@ -68,30 +71,43 @@ class Method(ABC):
                             msg.value(),
                             SerializationContext(msg.topic(), MessageField.VALUE),
                         )
-                        if deserialized_message["packets"] is None: # natting event
+                        if deserialized_message["packets"] is None:  # natting event
                             continue
                         to_return.append(deserialized_message)
                     except Exception as e:
-                        self.logger.exception(f"Error deserializing message: {e}. \nMessage: {msg.value()}")
+                        self.logger.exception(
+                            f"Error deserializing message: {e}. \nMessage: {msg.value()}"
+                        )
                     try:
                         # update the estimated sampling rate
                         curr_router = deserialized_message["peer_ip_src"]
                         if curr_router not in self.estimated_sampling_rate_mapping:
-                            self.estimated_sampling_rate_mapping[curr_router] = HIGHEST_SAMPLING_RATE
+                            self.estimated_sampling_rate_mapping[curr_router] = (
+                                HIGHEST_SAMPLING_RATE
+                            )
                         else:
                             self.estimated_sampling_rate_mapping[curr_router] = min(
                                 self.estimated_sampling_rate_mapping[curr_router],
                                 deserialized_message["packets"],
                             )
                     except Exception:
-                        self.logger.exception(f"Error estimating sampling rate \nMessage: {deserialized_message}")
+                        self.logger.exception(
+                            f"Error estimating sampling rate \nMessage: {deserialized_message}"
+                        )
             return to_return
 
     def _produce(self, message: dict[str, Any]) -> None:
         """Produce a message to the output topic using Avro serialization."""
         try:
             message["writer_id"] = self.writer_id
-            self._produce_with_retry(json.dumps(message).encode())
+            if self.serialize_with_avro:
+                serialized_message = self.avro_serializer(
+                    message,
+                    SerializationContext(self.input_topic, MessageField.VALUE),
+                )
+                self._produce_with_retry(serialized_message)
+            else:
+                self._produce_with_retry(json.dumps(message).encode())
             self.local_sampled_counter += 1
             if self.local_sampled_counter % 1000 == 0:
                 with self.shared_sampled_counter.get_lock():
@@ -119,6 +135,11 @@ class Method(ABC):
         self.logger.error("Failed to produce message after multiple retries")
         return False
 
+    def _get_schema_from_schema_registry(
+        self, schema_registry_url: str, schema_registry_subject: str,
+    ) -> RegisteredSchema:
+        sr = SchemaRegistryClient({"url": schema_registry_url})
+        return sr.get_latest_version(schema_registry_subject)
 
     def start(self, tot_counter: int, sampled_counter: int) -> None:
         """Start the method in a new thread and return the thread object."""
@@ -127,6 +148,21 @@ class Method(ABC):
         }
         schema_registry_client = SchemaRegistryClient(schema_registry_conf)
         self.avro_deserializer = AvroDeserializer(schema_registry_client)
+
+        if os.getenv("SERIALIZE_WITH_AVRO") == "True":
+            self.serialize_with_avro = True
+            latest_version = self._get_schema_from_schema_registry(
+                os.getenv("SCHEMA_REGISTRY_URL"),
+                os.getenv("AVRO_OUTPUT_SCHEMA_SUBJECT"),
+            )
+            self.avro_serializer = AvroSerializer(
+                schema_registry_client,
+                schema_str=latest_version.schema,
+                conf={
+                    "auto.register.schemas": False,
+                    "subject.name.strategy": (topic_record_subject_name_strategy),
+                },
+            )
 
         consumer_config = {
             "bootstrap.servers": os.getenv("CONSUMER_BOOTSTRAP_SERVERS"),
@@ -138,7 +174,9 @@ class Method(ABC):
             consumer_config["sasl.username"] = os.getenv("CONSUMER_SASL_USERNAME")
             consumer_config["sasl.password"] = os.getenv("CONSUMER_SASL_PASSWORD")
         elif consumer_config["security.protocol"].upper() == "SSL":
-            consumer_config["ssl.certificate.location"] = os.getenv("CONSUMER_SSL_CERTIFICATE_LOCATION")
+            consumer_config["ssl.certificate.location"] = os.getenv(
+                "CONSUMER_SSL_CERTIFICATE_LOCATION"
+            )
             consumer_config["ssl.key.location"] = os.getenv("CONSUMER_SSL_KEY_LOCATION")
             consumer_config["ssl.ca.location"] = os.getenv("CONSUMER_SSL_CA_LOCATION")
         consumer_id = f"{os.getenv('CONSUMER_ID')}"
@@ -160,7 +198,9 @@ class Method(ABC):
             producer_config["sasl.username"] = os.getenv("CONSUMER_SASL_USERNAME")
             producer_config["sasl.password"] = os.getenv("CONSUMER_SASL_PASSWORD")
         elif producer_config["security.protocol"].upper() == "SSL":
-            producer_config["ssl.certificate.location"] = os.getenv("CONSUMER_SSL_CERTIFICATE_LOCATION")
+            producer_config["ssl.certificate.location"] = os.getenv(
+                "CONSUMER_SSL_CERTIFICATE_LOCATION"
+            )
             producer_config["ssl.key.location"] = os.getenv("CONSUMER_SSL_KEY_LOCATION")
             producer_config["ssl.ca.location"] = os.getenv("CONSUMER_SSL_CA_LOCATION")
         self.output_topic: str = os.getenv("OUTPUT_TOPIC", "default_output_topic")
