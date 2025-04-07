@@ -1,5 +1,6 @@
 from __future__ import annotations  # noqa: D100
 
+import math
 import warnings
 from typing import Any
 
@@ -27,6 +28,7 @@ class Features(BaseModel):
     dst_ports: ThresholdValues | None = None
     random_prob: float | None = None
     renormilize_probs: bool = False
+
 
 class MultifactorSmartSampling(StatelessMethod):
     # this implementation should be very general and allows to use any combination of factors
@@ -82,6 +84,7 @@ class MultifactorParallelSampling(StatelessMethod):
         super().__init__(**kwargs)
         self.features: Features = features
         self.to_renormalize = ["bytes", "packets"]
+        self._adj_factor_cache = {}
 
     def _get_probability(self, message: dict[str, Any]) -> float:
         probabilities: list[float] = []
@@ -92,17 +95,29 @@ class MultifactorParallelSampling(StatelessMethod):
                 ) * feature_value["weight"]
                 probabilities.append(curr)
             elif feature_key == "syn_flag" and self._has_syn_flag(message):
-                probabilities.append(feature_value["weight"]/self._get_probability_norm_factor(message["peer_ip_src"]))
+                probabilities.append(
+                    feature_value["weight"]
+                    / self._get_probability_adj_factor(message["peer_ip_src"])
+                )
             elif feature_key == "src_ports":
                 port: str = str(message["port_src"])
                 if port in feature_value["values"]:
-                    probabilities.append(feature_value["weight"]/self._get_probability_norm_factor(message["peer_ip_src"]))
+                    probabilities.append(
+                        feature_value["weight"]
+                        / self._get_probability_adj_factor(message["peer_ip_src"])
+                    )
             elif feature_key == "dst_ports":
                 port: str = str(message["port_dst"])
                 if port in feature_value["values"]:
-                    probabilities.append(feature_value["weight"]/self._get_probability_norm_factor(message["peer_ip_src"]))
+                    probabilities.append(
+                        feature_value["weight"]
+                        / self._get_probability_adj_factor(message["peer_ip_src"])
+                    )
             elif feature_key == "random_prob":
-                probabilities.append(feature_value/self._get_probability_norm_factor(message["peer_ip_src"]))
+                probabilities.append(
+                    feature_value
+                    / self._get_probability_adj_factor(message["peer_ip_src"])
+                )
             elif feature_key == "dropped_status" and self._is_status_dropped(message):
                 probabilities.append(feature_value["weight"])
 
@@ -119,23 +134,24 @@ class MultifactorParallelSampling(StatelessMethod):
             not_happening = not_happening * (1 - prob)
         return 1 - not_happening
 
-    def _get_probability_norm_factor(self, peer_ip_src) -> float:
-        # TODO make it more general
+    def _get_probability_adj_factor(self, peer_ip_src: str) -> float:
         if self.features.renormilize_probs:
-            if self.estimated_sampling_rate_mapping[peer_ip_src] == 1:
-                return 240
-            if self.estimated_sampling_rate_mapping[peer_ip_src] == 16:
-                return 100
-            if self.estimated_sampling_rate_mapping[peer_ip_src] == 128:
-                return 30
-            if self.estimated_sampling_rate_mapping[peer_ip_src] == 256:
-                return 8
-            if self.estimated_sampling_rate_mapping[peer_ip_src] == 1000:
-                return 1.9
-            if self.estimated_sampling_rate_mapping[peer_ip_src] == 1024:
-                return 1.8
-        return 1
-
+            sampling_rate = self.estimated_sampling_rate_mapping.get(peer_ip_src)
+            if sampling_rate is not None:
+                if sampling_rate in self._adj_factor_cache:
+                    return self._adj_factor_cache[sampling_rate]
+                if 1 <= sampling_rate < 2048:
+                    result = 367.179 * math.pow(sampling_rate, -0.778)
+                    self._adj_factor_cache[sampling_rate] = result
+                    return result
+                if sampling_rate >= 2048:
+                    return 1.0
+            else:
+                self.logger.warning(
+                    "Peer %s not found in estimated sampling rate mapping.",
+                    peer_ip_src,
+                )
+        return 1.0
 
     def _renormalize(self, message: dict[str, Any], curr_prob: float) -> dict[str, Any]:
         for key in self.to_renormalize:
