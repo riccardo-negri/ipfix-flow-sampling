@@ -11,6 +11,7 @@ from methods.method import Method
 from methods.smart_sampling import (
     Features,
     MultifactorParallelSampling,
+    MultifactorSmartSampling,
 )
 
 
@@ -45,9 +46,29 @@ if __name__ == "__main__":
         ),
         MultifactorParallelSampling(
             features = Features(
+                random_prob = 0.8,
+                renormilize_probs=True,
+            ),
+            writer_id="80%-prob",
+        ),
+        MultifactorSmartSampling(
+            features = Features(
+                bytes={"threshold": 4000000, "weight": 1},
+            ),
+            writer_id="mf-smart-4MB",
+        ),
+        MultifactorSmartSampling(
+            features = Features(
                 packets={"threshold": 4096, "weight": 1},
             ),
             writer_id="mf-smart-4096p",
+        ),
+        MultifactorSmartSampling(
+            features = Features(
+                packets={"threshold": 8192, "weight": 1},
+                bytes={"threshold": 8000000, "weight": 1},
+            ),
+            writer_id="mf-smart-8192p-8MB",
         ),
         MultifactorParallelSampling(
             features = Features(
@@ -63,9 +84,10 @@ if __name__ == "__main__":
             features = Features(
                 packets={"threshold": 8192, "weight": 1},
                 random_prob = 0.20,
+                dropped_status={"threshold": 1, "weight": 1},
                 renormilize_probs=True,
             ),
-            writer_id="mf-parallel-8192p-20%-norm",
+            writer_id="mf-parallel-8192p-20%-drop-norm",
         ),
         MultifactorParallelSampling(
             features = Features(
