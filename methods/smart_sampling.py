@@ -18,10 +18,16 @@ class ThresholdValues(BaseModel):
     values: list[str]
     weight: float
 
+class MfThresholdValue(BaseModel):
+    bytes: int
+    packets: int
+    weight: float
+
 
 class Features(BaseModel):
     bytes: ThresholdValue | None = None
     packets: ThresholdValue | None = None
+    mf_bytes_packets: MfThresholdValue | None = None
     syn_flag: ThresholdValue | None = None
     dropped_status: ThresholdValue | None = None
     src_ports: ThresholdValues | None = None
@@ -76,11 +82,11 @@ class MultifactorSmartSampling(StatelessMethod):
         return message
 
 
-class MultifactorParallelSampling(StatelessMethod):
+class MultimodalParallelSampling(StatelessMethod):
     # this implementation should be very general and allows to use any combination of factors
 
     def __init__(self, *, features: Features, **kwargs) -> None:
-        """Initialize the MultifactorSmartSampling method."""
+        """Initialize the MultimodalParallelSampling method."""
         super().__init__(**kwargs)
         self.features: Features = features
         self.to_renormalize = ["bytes", "packets"]
@@ -92,6 +98,12 @@ class MultifactorParallelSampling(StatelessMethod):
             if feature_key in ["bytes", "packets"]:
                 curr = (
                     int(message[feature_key]) / feature_value["threshold"]
+                ) * feature_value["weight"]
+                probabilities.append(curr)
+            if feature_key == "mf_bytes_packets":
+                curr = (
+                    int(message["bytes"]) / feature_value["bytes"]
+                    + int(message["packets"]) / feature_value["packets"]
                 ) * feature_value["weight"]
                 probabilities.append(curr)
             elif feature_key == "syn_flag" and self._has_syn_flag(message):
