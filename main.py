@@ -10,8 +10,8 @@ from logger import logger
 from methods.method import Method
 from methods.smart_sampling import (
     Features,
-    MultifactorParallelSampling,
     MultifactorSmartSampling,
+    MultimodalParallelSampling,
 )
 
 
@@ -38,79 +38,117 @@ if __name__ == "__main__":
     load_dotenv()
 
     methods = [
-        MultifactorParallelSampling(
-            features = Features(
-                random_prob = 1,
-            ),
-            writer_id="ground-truth",
-        ),
-        MultifactorParallelSampling(
+        # MultimodalParallelSampling(
+        #     features = Features(
+        #         random_prob = 1,
+        #     ),
+        #     writer_id="ground-truth",
+        # ),
+        ### PROBABILISTIC SAMPLING ###
+        MultimodalParallelSampling(
             features = Features(
                 random_prob = 0.8,
                 renormilize_probs=True,
             ),
             writer_id="80%-prob",
         ),
+        ### MULTIFACTOR SMART SAMPLING ###
         MultifactorSmartSampling(
             features = Features(
-                bytes={"threshold": 4000000, "weight": 1},
+                bytes={"threshold": 3400000, "weight": 1},
             ),
-            writer_id="mf-smart-4MB",
+            writer_id="mf-smart-3.4MB",
         ),
         MultifactorSmartSampling(
             features = Features(
-                packets={"threshold": 4096, "weight": 1},
+                packets={"threshold": 4000, "weight": 1},
             ),
-            writer_id="mf-smart-4096p",
+            writer_id="mf-smart-4000p",
         ),
         MultifactorSmartSampling(
             features = Features(
-                packets={"threshold": 8192, "weight": 1},
                 bytes={"threshold": 8000000, "weight": 1},
+                packets={"threshold": 7168, "weight": 1},
             ),
-            writer_id="mf-smart-8192p-8MB",
+            writer_id="mf-smart-8MB-7168p",
         ),
-        MultifactorParallelSampling(
+        ### MULTIMODAL PARALLEL SAMPLING - WITH MSS ###
+        MultimodalParallelSampling(
             features = Features(
-                packets={"threshold": 6144, "weight": 1},
-                src_ports={"values": ["53", "2123", "5060"], "weight": 0.25},
-                dst_ports={"values": ["53", "2123", "5060"], "weight": 0.25},
+                mf_bytes_packets={"bytes": 24000000, "packets": 24576, "weight": 1},
+                random_prob = 0.24,
                 dropped_status={"threshold": 1, "weight": 1},
                 renormilize_probs=True,
             ),
-            writer_id="mf-parallel-6144p-ports25%-drop-norm",
+            writer_id="mm-prl-24MB-24576-24%-d",
         ),
-        MultifactorParallelSampling(
+        MultimodalParallelSampling(
             features = Features(
-                packets={"threshold": 8192, "weight": 1},
-                random_prob = 0.20,
+                mf_bytes_packets={"bytes": 16000000, "packets": 16384, "weight": 1},
+                random_prob = 0.10,
                 dropped_status={"threshold": 1, "weight": 1},
                 renormilize_probs=True,
             ),
-            writer_id="mf-parallel-8192p-20%-drop-norm",
+            writer_id="mm-prl-16MB-16384-10%-d",
         ),
-        MultifactorParallelSampling(
+        MultimodalParallelSampling(
+            features = Features(
+                mf_bytes_packets={"bytes": 16000000, "packets": 16384, "weight": 1},
+                random_prob = 0.10,
+                dst_ports={"values": ["53", "2123", "5060"], "weight": 1},
+                dropped_status={"threshold": 1, "weight": 1},
+                renormilize_probs=True,
+            ),
+            writer_id="mm-prl-16MB-16384-10%-p100%-d",
+        ),
+        MultimodalParallelSampling(
+            features = Features(
+                mf_bytes_packets={"bytes": 16000000, "packets": 16384, "weight": 1},
+                random_prob = 0.04,
+                syn_flag = {"threshold": 1, "weight": 0.20},
+                dropped_status={"threshold": 1, "weight": 1},
+                renormilize_probs=True,
+            ),
+            writer_id="mm-prl-16MB-16384-4%-syn20%-d",
+        ),
+        ### MULTIMODAL PARALLEL SAMPLING - WITH PACKET-SMART-SAMPLING ###
+        MultimodalParallelSampling(
+            features = Features(
+                packets={"threshold": 12288, "weight": 1},
+                random_prob = 0.24,
+                dropped_status={"threshold": 1, "weight": 1},
+                renormilize_probs=True,
+            ),
+            writer_id="mm-prl-12288p-24%-d",
+        ),
+        MultimodalParallelSampling(
             features = Features(
                 packets={"threshold": 8192, "weight": 1},
                 random_prob = 0.10,
-                src_ports={"values": ["53", "2123", "5060"], "weight": 0.50},
-                dst_ports={"values": ["53", "2123", "5060"], "weight": 0.50},
                 dropped_status={"threshold": 1, "weight": 1},
                 renormilize_probs=True,
             ),
-            writer_id="mf-parallel-8192p-10%-ports50%-drop-norm",
+            writer_id="mm-prl-8192p-10%-d",
         ),
-        MultifactorParallelSampling(
+        MultimodalParallelSampling(
             features = Features(
                 packets={"threshold": 8192, "weight": 1},
-                random_prob = 0.05,
-                src_ports={"values": ["53", "2123", "5060"], "weight": 0.50},
-                dst_ports={"values": ["53", "2123", "5060"], "weight": 0.50},
+                random_prob = 0.10,
+                dst_ports={"values": ["53", "2123", "5060"], "weight": 1},
                 dropped_status={"threshold": 1, "weight": 1},
-                syn_flag = {"threshold": 1, "weight": 0.25},
                 renormilize_probs=True,
             ),
-            writer_id="mf-parallel-8192p-5%-ports50%-drop-syn25%-norm",
+            writer_id="mm-prl-8192p-10%-p100%-d",
+        ),
+        MultimodalParallelSampling(
+            features = Features(
+                packets={"threshold": 8192, "weight": 1},
+                random_prob = 0.04,
+                syn_flag = {"threshold": 1, "weight": 0.20},
+                dropped_status={"threshold": 1, "weight": 1},
+                renormilize_probs=True,
+            ),
+            writer_id="mm-prl-8192p-4%-syn20%-d",
         ),
     ]
 
